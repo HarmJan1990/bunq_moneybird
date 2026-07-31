@@ -1,0 +1,12 @@
+# Geheimen en lokale staat — nooit committen
+config.yaml
+.bunq/
+.state/
+.env
+
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
