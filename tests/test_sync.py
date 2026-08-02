@@ -16,18 +16,28 @@ from bunq_moneybird.state import SyncState
 from bunq_moneybird.sync import payment_to_mutation
 
 EXAMPLE_CONFIG = """
-moneybird:
-  token_env: MB_TOKEN
 defaults:
   initial_sync_days: 14
 companies:
   - name: testbedrijf
     bunq:
       api_key_env: BUNQ_KEY_TEST
-    moneybird_administration_id: "111"
+    moneybird:
+      token_env: MB_TOKEN_TEST
+      administration_id: "111"
     accounts:
       - iban: "nl00 bunq 0000 0000 00"
         moneybird_financial_account_id: 222
+"""
+
+LEGACY_CONFIG = """
+moneybird:
+  token_env: MB_TOKEN_GLOBAL
+companies:
+  - name: oud
+    bunq:
+      api_key_env: BUNQ_KEY_OUD
+    moneybird_administration_id: "333"
 """
 
 
@@ -41,8 +51,19 @@ class ConfigTests(unittest.TestCase):
         company = config.company("testbedrijf")
         self.assertEqual(company.accounts[0].iban, "NL00BUNQ0000000000")
         self.assertEqual(company.accounts[0].moneybird_financial_account_id, "222")
+        self.assertEqual(company.moneybird_token_env, "MB_TOKEN_TEST")
+        self.assertEqual(company.moneybird_administration_id, "111")
         with self.assertRaises(ConfigError):
             config.company("bestaat-niet")
+
+    def test_legacy_shape_with_global_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.yaml"
+            path.write_text(LEGACY_CONFIG)
+            config = load_config(path)
+        company = config.company("oud")
+        self.assertEqual(company.moneybird_token_env, "MB_TOKEN_GLOBAL")
+        self.assertEqual(company.moneybird_administration_id, "333")
 
     def test_missing_env_var(self):
         with tempfile.TemporaryDirectory() as tmp:

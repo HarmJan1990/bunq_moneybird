@@ -2,11 +2,6 @@
 # config.yaml staat in .gitignore — er komen géén geheimen in git.
 # API keys en tokens gaan via omgevingsvariabelen (zie README).
 
-moneybird:
-  # Naam van de omgevingsvariabele met je Moneybird personal access token.
-  # Eén token werkt voor al je administraties.
-  token_env: MONEYBIRD_API_TOKEN
-
 defaults:
   # Hoeveel dagen terug bij de allereerste sync van een rekening.
   initial_sync_days: 30
@@ -19,8 +14,12 @@ companies:
       # Omgevingsvariabele met de bunq API key van dít bedrijf.
       api_key_env: BUNQ_API_KEY_BEDRIJF_1
       # wildcard_ip: true  # zet aan als de sync draait op wisselende IP-adressen
-    # Vind dit id met: bunq-moneybird list-moneybird
-    moneybird_administration_id: "123456789012345678"
+    moneybird:
+      # Moneybird geeft API-tokens per administratie uit, dus elk bedrijf
+      # heeft een eigen token (en eigen omgevingsvariabele) nodig.
+      token_env: MONEYBIRD_TOKEN_BEDRIJF_1
+      # Vind dit id met: bunq-moneybird list-moneybird
+      administration_id: "123456789012345678"
     accounts:
       # Vind IBAN's met:               bunq-moneybird list-bunq --company bedrijf-1
       # Vind financial account ids met: bunq-moneybird list-moneybird
@@ -30,7 +29,9 @@ companies:
   # - name: bedrijf-2
   #   bunq:
   #     api_key_env: BUNQ_API_KEY_BEDRIJF_2
-  #   moneybird_administration_id: "..."
+  #   moneybird:
+  #     token_env: MONEYBIRD_TOKEN_BEDRIJF_2
+  #     administration_id: "..."
   #   accounts:
   #     - iban: NL00BUNQ1111111111
   #       moneybird_financial_account_id: "..."

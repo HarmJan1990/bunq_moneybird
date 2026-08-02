@@ -28,6 +28,7 @@ class Company:
     bunq_api_key_env: str
     bunq_context_file: Path
     moneybird_administration_id: str
+    moneybird_token_env: str
     accounts: list[AccountMapping]
     bunq_wildcard_ip: bool = False
 
@@ -41,24 +42,23 @@ class Company:
             )
         return key
 
-
-@dataclass
-class Config:
-    companies: list[Company]
-    moneybird_token_env: str = "MONEYBIRD_API_TOKEN"
-    bunq_api_url: str = PRODUCTION_API_URL
-    initial_sync_days: int = 30
-    state_file: Path = field(default_factory=lambda: Path(".state/sync-state.json"))
-
     @property
     def moneybird_token(self) -> str:
         token = os.environ.get(self.moneybird_token_env, "").strip()
         if not token:
             raise ConfigError(
-                f"Omgevingsvariabele {self.moneybird_token_env} (Moneybird API-token) "
-                "is niet gezet."
+                f"Omgevingsvariabele {self.moneybird_token_env} (Moneybird-token voor "
+                f"'{self.name}') is niet gezet."
             )
         return token
+
+
+@dataclass
+class Config:
+    companies: list[Company]
+    bunq_api_url: str = PRODUCTION_API_URL
+    initial_sync_days: int = 30
+    state_file: Path = field(default_factory=lambda: Path(".state/sync-state.json"))
 
     def company(self, name: str) -> Company:
         for company in self.companies:
@@ -91,9 +91,19 @@ def load_config(path: Path) -> Config:
         if not api_key_env:
             raise ConfigError(f"Bedrijf '{name}': bunq.api_key_env ontbreekt.")
         context_file = bunq.get("context_file") or f".bunq/{name}-context.json"
-        administration_id = entry.get("moneybird_administration_id")
+
+        company_moneybird = entry.get("moneybird") or {}
+        administration_id = company_moneybird.get("administration_id") or entry.get(
+            "moneybird_administration_id"
+        )
         if not administration_id:
-            raise ConfigError(f"Bedrijf '{name}': moneybird_administration_id ontbreekt.")
+            raise ConfigError(f"Bedrijf '{name}': moneybird.administration_id ontbreekt.")
+        # Moneybird geeft tokens per administratie uit, dus elk bedrijf heeft
+        # zijn eigen token nodig. Een top-level moneybird.token_env blijft
+        # werken als fallback voor wie één token voor alles heeft.
+        token_env = company_moneybird.get("token_env") or moneybird.get("token_env")
+        if not token_env:
+            raise ConfigError(f"Bedrijf '{name}': moneybird.token_env ontbreekt.")
 
         accounts = []
         for acc in entry.get("accounts") or []:
@@ -112,6 +122,7 @@ def load_config(path: Path) -> Config:
                 bunq_api_key_env=api_key_env,
                 bunq_context_file=(base_dir / context_file),
                 moneybird_administration_id=str(administration_id),
+                moneybird_token_env=token_env,
                 accounts=accounts,
                 bunq_wildcard_ip=bool(bunq.get("wildcard_ip", False)),
             )
@@ -126,7 +137,6 @@ def load_config(path: Path) -> Config:
 
     return Config(
         companies=companies,
-        moneybird_token_env=moneybird.get("token_env", "MONEYBIRD_API_TOKEN"),
         bunq_api_url=api_url,
         initial_sync_days=int(defaults.get("initial_sync_days", 30)),
         state_file=base_dir / (defaults.get("state_file") or ".state/sync-state.json"),

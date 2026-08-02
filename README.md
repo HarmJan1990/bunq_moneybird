@@ -24,14 +24,17 @@ pip install -e .
 
 ## Configuratie
 
-### 1. Moneybird-token
+### 1. Moneybird-tokens (per administratie)
 
-Maak een personal access token aan op
-<https://moneybird.com/user/applications/new>. Eén token geeft toegang tot
-al je administraties.
+Moneybird geeft API-tokens tegenwoordig per administratie uit, dus je maakt
+er één per bedrijf. Ga in de betreffende administratie naar de
+API-instellingen en maak een token voor eigen gebruik aan (géén
+OAuth-applicatie — als er om een callback URL gevraagd wordt zit je in het
+verkeerde formulier).
 
 ```bash
-export MONEYBIRD_API_TOKEN="jouw-token"
+export MONEYBIRD_TOKEN_BEDRIJF_1="token-van-administratie-1"
+export MONEYBIRD_TOKEN_BEDRIJF_2="token-van-administratie-2"
 ```
 
 Let op: de bunq-koppeling in Moneybird moet **uitgeschakeld** zijn voor de

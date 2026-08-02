@@ -76,13 +76,13 @@ def main(argv: list[str] | None = None) -> int:
 
 def _cmd_sync(config, args) -> int:
     companies = [config.company(args.company)] if args.company else config.companies
-    moneybird = MoneybirdClient(config.moneybird_token)
     state = SyncState(config.state_file)
 
     total = 0
     failures = 0
     for company in companies:
         try:
+            moneybird = MoneybirdClient(company.moneybird_token)
             total += sync_company(config, company, moneybird, state, dry_run=args.dry_run)
         except (BunqApiError, MoneybirdApiError, ConfigError) as exc:
             failures += 1
@@ -113,18 +113,27 @@ def _cmd_list_bunq(config, args) -> int:
 
 
 def _cmd_list_moneybird(config) -> int:
-    client = MoneybirdClient(config.moneybird_token)
-    for admin in client.list_administrations():
-        print(f"\nAdministratie: {admin['name']}  (id: {admin['id']})")
-        accounts = client.list_financial_accounts(str(admin["id"]))
-        if not accounts:
-            print("  (geen financial accounts)")
-        for account in accounts:
-            print(
-                f"  id: {account['id']:<20} {account.get('identifier') or '':<22} "
-                f"{account.get('name') or ''}"
-            )
-    return 0
+    # Moneybird-tokens zijn per administratie; we tonen per bedrijf wat
+    # zijn token kan zien.
+    exit_code = 0
+    for company in config.companies:
+        print(f"\n=== Bedrijf: {company.name} ===")
+        try:
+            client = MoneybirdClient(company.moneybird_token)
+            for admin in client.list_administrations():
+                print(f"Administratie: {admin['name']}  (id: {admin['id']})")
+                accounts = client.list_financial_accounts(str(admin["id"]))
+                if not accounts:
+                    print("  (geen financial accounts)")
+                for account in accounts:
+                    print(
+                        f"  id: {account['id']:<20} {account.get('identifier') or '':<22} "
+                        f"{account.get('name') or ''}"
+                    )
+        except (ConfigError, MoneybirdApiError) as exc:
+            print(f"  Overgeslagen: {exc}", file=sys.stderr)
+            exit_code = 1
+    return exit_code
 
 
 if __name__ == "__main__":
