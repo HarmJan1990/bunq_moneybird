@@ -11,6 +11,32 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+class PayoutState:
+    """Referenties van al ingediende uitbetalingen, zodat dezelfde export
+    nooit twee keer wordt uitbetaald."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        self._data: dict = {"submitted": {}}
+        if path.exists():
+            self._data = json.loads(path.read_text())
+            self._data.setdefault("submitted", {})
+
+    def is_submitted(self, reference: str) -> bool:
+        return reference in self._data["submitted"]
+
+    def mark_submitted(self, reference: str, draft_id: int, source: str) -> None:
+        self._data["submitted"][reference] = {
+            "draft_payment_id": draft_id,
+            "source": source,
+            "submitted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+
+    def save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(self._data, indent=2))
+
+
 class SyncState:
     def __init__(self, path: Path):
         self.path = path

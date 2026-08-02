@@ -111,6 +111,41 @@ transacties als al-bestaand worden overgeslagen. `sync_from` geldt alleen
 voor de allereerste sync van een rekening; daarna bepaalt het statebestand
 waar verdergegaan wordt.
 
+## Uitbetalingen klaarzetten (`pay`)
+
+Naast het synchroniseren naar Moneybird kan de tool een
+SEPA-uitbetalingsexport (CSV of pain.001.001.03-XML, zoals de
+WijKopenBonnen-export) inlezen en als **concept-betaling** in bunq
+klaarzetten:
+
+```bash
+# Eerst controleren wat er in het bestand zit:
+bunq-moneybird pay wijkopenbonnen-uitbetalingen-20260802-181422.xml \
+    --company bedrijf-1 --dry-run
+
+# Echt klaarzetten:
+bunq-moneybird pay wijkopenbonnen-uitbetalingen-20260802-181422.xml \
+    --company bedrijf-1
+```
+
+Veiligheidsontwerp, bewust zo gekozen:
+
+- **De tool maakt nooit zelf geld over.** Er wordt een draft payment
+  aangemaakt die jij in de bunq-app moet goedkeuren; pas dan wordt er
+  betaald. Tot die tijd kun je hem in de app ook gewoon weggooien.
+- **Elke referentie wordt maar één keer ingediend.** Al ingediende
+  referenties (bijgehouden in `.state/payouts.json`) worden overgeslagen,
+  dus dezelfde export twee keer draaien kan geen dubbele uitbetaling
+  veroorzaken.
+- **Het bestand wordt streng gevalideerd** voordat er iets gebeurt:
+  IBAN-controlegetallen (mod-97), positieve bedragen met maximaal 2
+  decimalen, alleen EUR, unieke referenties, en bij XML moeten `NbOfTxs`
+  en `CtrlSum` kloppen met de daadwerkelijke inhoud.
+
+Bij een XML-export wordt de rekening waarvan betaald wordt uit het bestand
+gehaald (`DbtrAcct`); bij CSV geef je hem op met `--iban`. Grote exports
+worden gesplitst in concept-betalingen van maximaal 100 uitbetalingen.
+
 ### Automatisch draaien (cron)
 
 ```cron

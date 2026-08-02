@@ -247,6 +247,22 @@ class BunqClient:
                 return account
         raise BunqApiError(404, f"Geen bunq-rekening gevonden met IBAN {iban}.")
 
+    def create_draft_payment(self, monetary_account_id: int, entries: list[dict]) -> int:
+        """Zet een concept-betaling (batch) klaar die in de bunq-app moet worden
+        goedgekeurd voordat er iets wordt overgemaakt.
+
+        Elke entry: {"amount": {"value": "42.50", "currency": "EUR"},
+                     "counterparty_alias": {"type": "IBAN", "value": "NL..", "name": "..."},
+                     "description": "..."}
+        """
+        self._ensure_session()
+        data = self._request(
+            "POST",
+            f"/v1/user/{self._user_id}/monetary-account/{monetary_account_id}/draft-payment",
+            payload={"number_of_required_accepts": 1, "entries": entries},
+        )
+        return _find(data, "Id")["id"]
+
     def fetch_payments(
         self,
         monetary_account_id: int,
