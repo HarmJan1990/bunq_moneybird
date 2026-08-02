@@ -63,6 +63,12 @@ def main(argv: list[str] | None = None) -> int:
         "bij XML wordt standaard de debiteur-IBAN uit het bestand gebruikt)",
     )
     p_pay.add_argument(
+        "--force", action="append", default=[], metavar="REFERENTIE",
+        help="Dien deze referentie opnieuw in, ook al is hij al eerder ingediend "
+        "(bijv. nadat je de concept-betaling in de app hebt geannuleerd). "
+        "Herhaal de optie voor meerdere referenties.",
+    )
+    p_pay.add_argument(
         "--dry-run", action="store_true",
         help="Alleen inlezen, valideren en tonen; niets naar bunq sturen",
     )
@@ -118,9 +124,23 @@ def _cmd_pay(config, args) -> int:
         )
         return 2
 
+    forced = {ref.strip() for ref in args.force}
+    in_file = {p.reference for p in batch.payouts}
+    unknown_forced = forced - in_file
+    if unknown_forced:
+        print(
+            f"Fout: --force referentie(s) niet gevonden in {batch.source}: "
+            f"{', '.join(sorted(unknown_forced))}",
+            file=sys.stderr,
+        )
+        return 2
+
     payout_state = PayoutState(config.state_file.parent / "payouts.json")
-    already = [p for p in batch.payouts if payout_state.is_submitted(p.reference)]
-    todo = [p for p in batch.payouts if not payout_state.is_submitted(p.reference)]
+    already = [
+        p for p in batch.payouts
+        if payout_state.is_submitted(p.reference) and p.reference not in forced
+    ]
+    todo = [p for p in batch.payouts if p not in already]
 
     print(f"Bestand: {batch.source} — {len(batch.payouts)} uitbetaling(en), "
           f"totaal € {batch.total}")
@@ -128,6 +148,9 @@ def _cmd_pay(config, args) -> int:
         print(f"Al eerder ingediend (overgeslagen): {len(already)}")
         for payout in already:
             print(f"  - {payout.reference}  € {payout.amount}  {payout.name}")
+    for payout in todo:
+        if payout.reference in forced and payout_state.is_submitted(payout.reference):
+            print(f"Opnieuw ingediend via --force: {payout.reference}")
     if not todo:
         print("Niets te doen: alle referenties zijn al eerder ingediend.")
         return 0
