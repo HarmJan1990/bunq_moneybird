@@ -89,6 +89,21 @@ Bij de eerste sync van een rekening worden transacties van de afgelopen 30
 dagen opgehaald (instelbaar via `initial_sync_days`); daarna alleen wat nieuw
 is sinds de vorige run.
 
+**Kwam een rekening eerder binnen via de oude bunq-koppeling?** Zoek dan in
+Moneybird de datum van de laatst geïmporteerde mutatie op en zet per rekening
+`sync_from` op de dag erna, anders importeert de eerste sync die transacties
+dubbel:
+
+```yaml
+      - iban: NL00BUNQ0000000000
+        moneybird_financial_account_id: "..."
+        sync_from: "2026-07-15"
+```
+
+Controleer het altijd eerst met `sync --dry-run`. `sync_from` geldt alleen
+voor de allereerste sync van een rekening; daarna bepaalt het statebestand
+waar verdergegaan wordt.
+
 ### Automatisch draaien (cron)
 
 ```cron

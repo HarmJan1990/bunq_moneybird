@@ -3,6 +3,7 @@
 Draaien met: python -m unittest discover tests
 """
 
+import datetime
 import json
 import os
 import tempfile
@@ -28,6 +29,7 @@ companies:
     accounts:
       - iban: "nl00 bunq 0000 0000 00"
         moneybird_financial_account_id: 222
+        sync_from: "2026-07-15"
 """
 
 LEGACY_CONFIG = """
@@ -53,6 +55,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(company.accounts[0].moneybird_financial_account_id, "222")
         self.assertEqual(company.moneybird_token_env, "MB_TOKEN_TEST")
         self.assertEqual(company.moneybird_administration_id, "111")
+        self.assertEqual(company.accounts[0].sync_from, datetime.date(2026, 7, 15))
         with self.assertRaises(ConfigError):
             config.company("bestaat-niet")
 

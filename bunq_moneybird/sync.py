@@ -58,10 +58,13 @@ def sync_company(
         last_id = state.last_payment_id(company.name, mapping.iban)
         since = None
         if last_id is None:
-            since = date.today() - timedelta(days=config.initial_sync_days)
+            since = mapping.sync_from or (
+                date.today() - timedelta(days=config.initial_sync_days)
+            )
             logger.info(
-                "[%s] %s: eerste sync, transacties vanaf %s worden opgehaald.",
+                "[%s] %s: eerste sync, transacties vanaf %s worden opgehaald%s.",
                 company.name, mapping.iban, since.isoformat(),
+                " (sync_from uit config)" if mapping.sync_from else "",
             )
 
         payments = bunq.fetch_payments(account["id"], after_payment_id=last_id, since=since)

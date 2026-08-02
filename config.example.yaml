@@ -25,6 +25,11 @@ companies:
       # Vind financial account ids met: bunq-moneybird list-moneybird
       - iban: NL00BUNQ0000000000
         moneybird_financial_account_id: "123456789012345678"
+        # Optioneel: begin de allereerste sync pas op deze datum, in plaats
+        # van initial_sync_days terug. Zet dit op de dag NA de laatste
+        # transactie die een eerdere koppeling al importeerde, anders komen
+        # die dubbel in Moneybird.
+        # sync_from: "2026-07-15"
 
   # - name: bedrijf-2
   #   bunq:

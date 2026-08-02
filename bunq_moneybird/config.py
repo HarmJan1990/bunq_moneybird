@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 import yaml
@@ -20,6 +21,9 @@ class ConfigError(Exception):
 class AccountMapping:
     iban: str
     moneybird_financial_account_id: str
+    # Eerste sync begint op deze datum in plaats van initial_sync_days terug.
+    # Handig als een oude koppeling al tot een bepaalde datum heeft geïmporteerd.
+    sync_from: date | None = None
 
 
 @dataclass
@@ -114,7 +118,22 @@ def load_config(path: Path) -> Config:
                     f"Bedrijf '{name}': elk account heeft 'iban' en "
                     "'moneybird_financial_account_id' nodig."
                 )
-            accounts.append(AccountMapping(iban=iban, moneybird_financial_account_id=str(fa_id)))
+            sync_from = acc.get("sync_from")
+            if sync_from is not None and not isinstance(sync_from, date):
+                try:
+                    sync_from = date.fromisoformat(str(sync_from))
+                except ValueError:
+                    raise ConfigError(
+                        f"Bedrijf '{name}', rekening {iban}: sync_from moet een "
+                        f"datum zijn (JJJJ-MM-DD), niet '{sync_from}'."
+                    )
+            accounts.append(
+                AccountMapping(
+                    iban=iban,
+                    moneybird_financial_account_id=str(fa_id),
+                    sync_from=sync_from,
+                )
+            )
 
         companies.append(
             Company(
