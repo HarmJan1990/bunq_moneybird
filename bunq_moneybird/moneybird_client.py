@@ -48,6 +48,24 @@ class MoneybirdClient:
     def list_financial_accounts(self, administration_id: str) -> list[dict]:
         return self._request("GET", f"/{administration_id}/financial_accounts.json")
 
+    def list_financial_mutations(
+        self, administration_id: str, financial_account_id: str, start: str, end: str
+    ) -> list[dict]:
+        """Alle bestaande mutaties van een rekening in de periode start..end (YYYYMMDD)."""
+        mutations: list[dict] = []
+        page = 1
+        while True:
+            batch = self._request(
+                "GET",
+                f"/{administration_id}/financial_mutations.json"
+                f"?filter=financial_account_id:{financial_account_id},period:{start}..{end}"
+                f"&per_page=100&page={page}",
+            )
+            mutations.extend(batch)
+            if len(batch) < 100:
+                return mutations
+            page += 1
+
     def create_financial_statement(
         self,
         administration_id: str,

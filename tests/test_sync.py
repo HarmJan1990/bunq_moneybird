@@ -14,7 +14,7 @@ from unittest import mock
 from bunq_moneybird.bunq_client import BunqClient
 from bunq_moneybird.config import ConfigError, load_config
 from bunq_moneybird.state import SyncState
-from bunq_moneybird.sync import payment_to_mutation
+from bunq_moneybird.sync import filter_new_payments, payment_to_mutation
 
 EXAMPLE_CONFIG = """
 defaults:
@@ -120,6 +120,55 @@ class MutationTests(unittest.TestCase):
             "counterparty_alias": {"display_name": "Iemand"},
         }
         self.assertEqual(payment_to_mutation(payment)["message"], "Iemand")
+
+
+def _bunq_payment(pid, day, value):
+    return {
+        "id": pid,
+        "created": f"2026-07-{day:02d} 10:00:00.000000",
+        "amount": {"value": value, "currency": "EUR"},
+        "description": f"betaling {pid}",
+        "counterparty_alias": {},
+    }
+
+
+class DedupTests(unittest.TestCase):
+    def test_skips_payments_already_in_moneybird(self):
+        payments = [
+            _bunq_payment(1, 10, "-10.00"),
+            _bunq_payment(2, 10, "-10.00"),
+            _bunq_payment(3, 11, "25.50"),
+            _bunq_payment(4, 12, "-3.00"),
+        ]
+        existing = [
+            # Eén van de twee tientjes op de 10e staat er al; formattering
+            # met extra decimalen moet ook matchen.
+            {"date": "2026-07-10", "amount": "-10.0"},
+            {"date": "2026-07-11", "amount": "25.50"},
+        ]
+        new_payments, skipped = filter_new_payments(payments, existing)
+        self.assertEqual(skipped, 2)
+        self.assertEqual([p["id"] for p in new_payments], [2, 4])
+
+    def test_nothing_existing_keeps_everything(self):
+        payments = [_bunq_payment(1, 10, "-10.00")]
+        new_payments, skipped = filter_new_payments(payments, [])
+        self.assertEqual((len(new_payments), skipped), (1, 0))
+
+    def test_gap_left_by_old_link_is_imported(self):
+        # De oude koppeling miste betaling 2; alleen die moet alsnog mee.
+        payments = [
+            _bunq_payment(1, 10, "-10.00"),
+            _bunq_payment(2, 10, "-99.99"),
+            _bunq_payment(3, 11, "5.00"),
+        ]
+        existing = [
+            {"date": "2026-07-10", "amount": "-10.00"},
+            {"date": "2026-07-11", "amount": "5.00"},
+        ]
+        new_payments, skipped = filter_new_payments(payments, existing)
+        self.assertEqual(skipped, 2)
+        self.assertEqual([p["id"] for p in new_payments], [2])
 
 
 def _page(payments, older_url=None):

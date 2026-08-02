@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 
 from .bunq_client import BunqClient, _payment_date
 from .config import Company, Config
@@ -28,6 +30,42 @@ def payment_to_mutation(payment: dict) -> dict:
         "contra_account_name": (counterparty.get("display_name") or "")[:255],
         "contra_account_number": counterparty.get("iban") or "",
     }
+
+
+def _amount_key(value: str | None) -> Decimal:
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError):
+        return Decimal(0)
+
+
+def filter_new_payments(
+    payments: list[dict], existing_mutations: list[dict]
+) -> tuple[list[dict], int]:
+    """Laat betalingen weg die al als mutatie in Moneybird staan.
+
+    Matcht op (datum, bedrag) met aantallen: staat een bedrag op een dag al
+    n keer in Moneybird, dan worden er maximaal n bunq-betalingen met
+    diezelfde datum en hetzelfde bedrag overgeslagen. Zo blijven legitieme
+    dubbele betalingen behouden en worden gaten die een eerdere koppeling
+    liet vallen alsnog geïmporteerd.
+    """
+    existing = Counter(
+        (m.get("date"), _amount_key(m.get("amount"))) for m in existing_mutations
+    )
+    new_payments: list[dict] = []
+    skipped = 0
+    for payment in payments:
+        key = (
+            _payment_date(payment).isoformat(),
+            _amount_key((payment.get("amount") or {}).get("value")),
+        )
+        if existing[key] > 0:
+            existing[key] -= 1
+            skipped += 1
+        else:
+            new_payments.append(payment)
+    return new_payments, skipped
 
 
 def sync_company(
@@ -72,15 +110,40 @@ def sync_company(
             logger.info("[%s] %s: geen nieuwe transacties.", company.name, mapping.iban)
             continue
 
+        # Vergelijk met wat er al in Moneybird staat, zodat overlap met een
+        # eerdere koppeling (of een verloren statebestand) nooit tot dubbele
+        # mutaties leidt.
+        existing = moneybird.list_financial_mutations(
+            administration_id=company.moneybird_administration_id,
+            financial_account_id=mapping.moneybird_financial_account_id,
+            start=_payment_date(payments[0]).strftime("%Y%m%d"),
+            end=_payment_date(payments[-1]).strftime("%Y%m%d"),
+        )
+        new_payments, skipped = filter_new_payments(payments, existing)
+        if skipped:
+            logger.info(
+                "[%s] %s: %d transactie(s) overgeslagen die al in Moneybird staan.",
+                company.name, mapping.iban, skipped,
+            )
+        if not new_payments:
+            logger.info(
+                "[%s] %s: alles staat al in Moneybird; niets te doen.",
+                company.name, mapping.iban,
+            )
+            if not dry_run:
+                state.update(company.name, mapping.iban, payments[-1]["id"])
+                state.save()
+            continue
+
         logger.info(
             "[%s] %s: %d nieuwe transactie(s) (%s t/m %s).",
-            company.name, mapping.iban, len(payments),
-            _payment_date(payments[0]).isoformat(),
-            _payment_date(payments[-1]).isoformat(),
+            company.name, mapping.iban, len(new_payments),
+            _payment_date(new_payments[0]).isoformat(),
+            _payment_date(new_payments[-1]).isoformat(),
         )
 
-        for chunk_start in range(0, len(payments), MUTATIONS_PER_STATEMENT):
-            chunk = payments[chunk_start : chunk_start + MUTATIONS_PER_STATEMENT]
+        for chunk_start in range(0, len(new_payments), MUTATIONS_PER_STATEMENT):
+            chunk = new_payments[chunk_start : chunk_start + MUTATIONS_PER_STATEMENT]
             reference = (
                 f"bunq {mapping.iban} "
                 f"#{chunk[0]['id']}-{chunk[-1]['id']}"
@@ -104,6 +167,11 @@ def sync_company(
             state.save()
             logger.info("  Afschrift '%s' aangemaakt (%d mutaties).", reference, len(mutations))
 
-        total += len(payments)
+        if not dry_run:
+            # Ook overgeslagen (al bestaande) betalingen aan het einde tellen
+            # mee als verwerkt.
+            state.update(company.name, mapping.iban, payments[-1]["id"])
+            state.save()
+        total += len(new_payments)
 
     return total
