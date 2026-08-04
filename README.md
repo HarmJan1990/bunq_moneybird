@@ -89,14 +89,16 @@ Bij de eerste sync van een rekening worden transacties van de afgelopen 30
 dagen opgehaald (instelbaar via `initial_sync_days`); daarna alleen wat nieuw
 is sinds de vorige run.
 
-**Dubbele imports worden actief voorkomen.** Vóór het aanmaken van een
+**Dubbele imports worden actief voorkomen.** Elke mutatie die deze tool
+aanmaakt krijgt een code `bunq-<payment-id>` mee, waarmee hij exact
+herleidbaar is naar één bunq-transactie. Vóór het aanmaken van een
 afschrift haalt de sync de bestaande mutaties van die rekening en periode
-uit Moneybird op, en slaat alles over wat er al staat (gematcht op datum +
-bedrag + tegenrekening-IBAN, met aantallen; bestaande mutaties zonder
-tegenrekening matchen op datum + bedrag). Rekeningen die eerder via de
-oude bunq-koppeling binnenkwamen kunnen dus veilig gesynchroniseerd
-worden: al geïmporteerde transacties worden overgeslagen, en transacties
-die de oude koppeling gemist heeft worden alsnog aangevuld.
+uit Moneybird op en slaat alles over wat er al staat: op code (exact)
+voor eigen mutaties, en heuristisch (datum + bedrag +
+tegenrekening-IBAN, met aantallen) voor mutaties zonder code, zoals die
+van de oude bunq-koppeling. Al geïmporteerde transacties worden dus
+overgeslagen, en transacties die de oude koppeling gemist heeft worden
+alsnog aangevuld.
 
 Met `sync --rescan 30` wordt de afgelopen 30 dagen opnieuw met Moneybird
 vergeleken, ongeacht het onthouden syncpunt; alleen wat ontbreekt wordt

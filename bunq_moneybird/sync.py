@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 MUTATIONS_PER_STATEMENT = 100
 
 
+def _payment_code(payment: dict) -> str:
+    """Unieke code per bunq-betaling; maakt de dedup exact."""
+    return f"bunq-{payment['id']}"
+
+
 def payment_to_mutation(payment: dict) -> dict:
     counterparty = payment.get("counterparty_alias") or {}
     message = (payment.get("description") or "").strip()
@@ -27,6 +32,7 @@ def payment_to_mutation(payment: dict) -> dict:
         "date": _payment_date(payment).isoformat(),
         "amount": (payment.get("amount") or {}).get("value", "0"),
         "message": message[:255],
+        "code": _payment_code(payment),
         "contra_account_name": (counterparty.get("display_name") or "")[:255],
         "contra_account_number": counterparty.get("iban") or "",
     }
@@ -48,16 +54,22 @@ def filter_new_payments(
 ) -> tuple[list[dict], int]:
     """Laat betalingen weg die al als mutatie in Moneybird staan.
 
-    Matcht met aantallen (staat iets er n keer, dan worden er maximaal n
-    overgeslagen). Bestaande mutaties mét tegenrekening matchen alleen op
-    (datum, bedrag, tegenrekening-IBAN); mutaties zonder tegenrekening
-    vallen terug op (datum, bedrag). Zo wordt een betaling die toevallig
-    dezelfde datum en hetzelfde bedrag heeft als een andere transactie niet
-    ten onrechte overgeslagen.
+    Mutaties die door deze tool zijn aangemaakt dragen een code
+    'bunq-<payment-id>' en matchen daarop exact. Alleen voor mutaties
+    zonder zo'n code (bijv. van de oude bunq-koppeling) geldt nog een
+    heuristiek met aantallen: mét tegenrekening op (datum, bedrag,
+    tegenrekening-IBAN), zonder tegenrekening op (datum, bedrag).
     """
+    known_codes: set[str] = set()
     with_contra: Counter = Counter()
     without_contra: Counter = Counter()
     for mutation in existing_mutations:
+        code = (mutation.get("code") or "").strip()
+        if code.startswith("bunq-"):
+            # Exact herleidbaar naar één bunq-betaling; doet niet mee aan
+            # de heuristiek.
+            known_codes.add(code)
+            continue
         key = (mutation.get("date"), _amount_key(mutation.get("amount")))
         contra = _normalize_iban(mutation.get("contra_account_number"))
         if contra:
@@ -68,6 +80,9 @@ def filter_new_payments(
     new_payments: list[dict] = []
     skipped = 0
     for payment in payments:
+        if _payment_code(payment) in known_codes:
+            skipped += 1
+            continue
         key = (
             _payment_date(payment).isoformat(),
             _amount_key((payment.get("amount") or {}).get("value")),

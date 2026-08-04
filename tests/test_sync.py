@@ -106,6 +106,7 @@ class MutationTests(unittest.TestCase):
                 "date": "2026-07-30",
                 "amount": "-12.34",
                 "message": "Factuur 2026-001",
+                "code": "bunq-7",
                 "contra_account_name": "Klant BV",
                 "contra_account_number": "NL99RABO0123456789",
             },
@@ -153,6 +154,33 @@ class DedupTests(unittest.TestCase):
     def test_nothing_existing_keeps_everything(self):
         payments = [_bunq_payment(1, 10, "-10.00")]
         new_payments, skipped = filter_new_payments(payments, [])
+        self.assertEqual((len(new_payments), skipped), (1, 0))
+
+    def test_code_match_is_exact(self):
+        # Mutaties met onze bunq-code matchen op payment-id, ongeacht wat
+        # er verder die dag aan gelijke bedragen staat.
+        payments = [
+            _bunq_payment(101, 10, "-59.50", contra="NL91ABNA0417164300"),
+            _bunq_payment(102, 10, "-59.50", contra="NL39RABO0300065264"),
+        ]
+        existing = [
+            {"date": "2026-07-10", "amount": "-59.50", "code": "bunq-101",
+             "contra_account_number": "NL91ABNA0417164300"},
+        ]
+        new_payments, skipped = filter_new_payments(payments, existing)
+        self.assertEqual(skipped, 1)
+        self.assertEqual([p["id"] for p in new_payments], [102])
+
+    def test_coded_mutation_never_matches_heuristically(self):
+        # Een mutatie met code bunq-999 hoort bij betaling 999; hij mag een
+        # ándere betaling met dezelfde datum/bedrag/tegenrekening niet
+        # wegdrukken via de heuristiek.
+        payments = [_bunq_payment(1, 10, "-59.50", contra="NL91ABNA0417164300")]
+        existing = [
+            {"date": "2026-07-10", "amount": "-59.50", "code": "bunq-999",
+             "contra_account_number": "NL91ABNA0417164300"},
+        ]
+        new_payments, skipped = filter_new_payments(payments, existing)
         self.assertEqual((len(new_payments), skipped), (1, 0))
 
     def test_same_amount_other_counterparty_is_not_skipped(self):
