@@ -92,10 +92,15 @@ is sinds de vorige run.
 **Dubbele imports worden actief voorkomen.** Vóór het aanmaken van een
 afschrift haalt de sync de bestaande mutaties van die rekening en periode
 uit Moneybird op, en slaat alles over wat er al staat (gematcht op datum +
-bedrag, met aantallen). Rekeningen die eerder via de oude bunq-koppeling
-binnenkwamen kunnen dus veilig gesynchroniseerd worden: al geïmporteerde
-transacties worden overgeslagen, en transacties die de oude koppeling
-gemist heeft worden alsnog aangevuld.
+bedrag + tegenrekening-IBAN, met aantallen; bestaande mutaties zonder
+tegenrekening matchen op datum + bedrag). Rekeningen die eerder via de
+oude bunq-koppeling binnenkwamen kunnen dus veilig gesynchroniseerd
+worden: al geïmporteerde transacties worden overgeslagen, en transacties
+die de oude koppeling gemist heeft worden alsnog aangevuld.
+
+Met `sync --rescan 30` wordt de afgelopen 30 dagen opnieuw met Moneybird
+vergeleken, ongeacht het onthouden syncpunt; alleen wat ontbreekt wordt
+aangevuld. Handig als er ooit iets gemist lijkt te zijn.
 
 Wil je bij de eerste sync verder terug (of juist minder ver) dan de
 standaard 30 dagen, zet dan per rekening een startdatum:

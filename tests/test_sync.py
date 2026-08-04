@@ -122,13 +122,13 @@ class MutationTests(unittest.TestCase):
         self.assertEqual(payment_to_mutation(payment)["message"], "Iemand")
 
 
-def _bunq_payment(pid, day, value):
+def _bunq_payment(pid, day, value, contra=None):
     return {
         "id": pid,
         "created": f"2026-07-{day:02d} 10:00:00.000000",
         "amount": {"value": value, "currency": "EUR"},
         "description": f"betaling {pid}",
-        "counterparty_alias": {},
+        "counterparty_alias": {"iban": contra} if contra else {},
     }
 
 
@@ -154,6 +154,44 @@ class DedupTests(unittest.TestCase):
         payments = [_bunq_payment(1, 10, "-10.00")]
         new_payments, skipped = filter_new_payments(payments, [])
         self.assertEqual((len(new_payments), skipped), (1, 0))
+
+    def test_same_amount_other_counterparty_is_not_skipped(self):
+        # Het uitbetalingsscenario: op dezelfde dag staat al een mutatie met
+        # hetzelfde bedrag maar een ándere tegenrekening in Moneybird. Die
+        # mag de nieuwe betaling niet wegdrukken.
+        payments = [
+            _bunq_payment(1, 10, "-59.50", contra="NL91ABNA0417164300"),
+        ]
+        existing = [
+            {
+                "date": "2026-07-10",
+                "amount": "-59.50",
+                "contra_account_number": "NL39RABO0300065264",
+            },
+        ]
+        new_payments, skipped = filter_new_payments(payments, existing)
+        self.assertEqual(skipped, 0)
+        self.assertEqual([p["id"] for p in new_payments], [1])
+
+    def test_same_amount_same_counterparty_is_skipped(self):
+        payments = [_bunq_payment(1, 10, "-59.50", contra="NL91ABNA0417164300")]
+        existing = [
+            {
+                "date": "2026-07-10",
+                "amount": "-59.50",
+                "contra_account_number": "nl91 abna 0417 1643 00",
+            },
+        ]
+        new_payments, skipped = filter_new_payments(payments, existing)
+        self.assertEqual((len(new_payments), skipped), (0, 1))
+
+    def test_existing_without_contra_still_matches_on_date_and_amount(self):
+        # Mutaties van een oude koppeling zonder tegenrekening blijven
+        # matchen op datum + bedrag.
+        payments = [_bunq_payment(1, 10, "-10.00", contra="NL91ABNA0417164300")]
+        existing = [{"date": "2026-07-10", "amount": "-10.00"}]
+        new_payments, skipped = filter_new_payments(payments, existing)
+        self.assertEqual((len(new_payments), skipped), (0, 1))
 
     def test_gap_left_by_old_link_is_imported(self):
         # De oude koppeling miste betaling 2; alleen die moet alsnog mee.

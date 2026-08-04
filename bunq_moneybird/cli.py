@@ -39,6 +39,11 @@ def main(argv: list[str] | None = None) -> int:
         "--dry-run", action="store_true",
         help="Laat zien wat er zou gebeuren zonder iets naar Moneybird te sturen",
     )
+    p_sync.add_argument(
+        "--rescan", type=int, metavar="DAGEN",
+        help="Vergelijk de afgelopen DAGEN dagen opnieuw met Moneybird in plaats "
+        "van alleen wat nieuw is; alleen ontbrekende transacties worden aangevuld",
+    )
 
     p_bunq = subparsers.add_parser(
         "list-bunq", help="Toon bunq-rekeningen (IBAN's) van een bedrijf"
@@ -209,7 +214,10 @@ def _cmd_sync(config, args) -> int:
     for company in companies:
         try:
             moneybird = MoneybirdClient(company.moneybird_token)
-            total += sync_company(config, company, moneybird, state, dry_run=args.dry_run)
+            total += sync_company(
+                config, company, moneybird, state,
+                dry_run=args.dry_run, rescan_days=args.rescan,
+            )
         except (BunqApiError, MoneybirdApiError, ConfigError) as exc:
             failures += 1
             print(f"[{company.name}] Fout: {exc}", file=sys.stderr)

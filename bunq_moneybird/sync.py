@@ -39,20 +39,32 @@ def _amount_key(value: str | None) -> Decimal:
         return Decimal(0)
 
 
+def _normalize_iban(value: str | None) -> str:
+    return (value or "").replace(" ", "").upper()
+
+
 def filter_new_payments(
     payments: list[dict], existing_mutations: list[dict]
 ) -> tuple[list[dict], int]:
     """Laat betalingen weg die al als mutatie in Moneybird staan.
 
-    Matcht op (datum, bedrag) met aantallen: staat een bedrag op een dag al
-    n keer in Moneybird, dan worden er maximaal n bunq-betalingen met
-    diezelfde datum en hetzelfde bedrag overgeslagen. Zo blijven legitieme
-    dubbele betalingen behouden en worden gaten die een eerdere koppeling
-    liet vallen alsnog geïmporteerd.
+    Matcht met aantallen (staat iets er n keer, dan worden er maximaal n
+    overgeslagen). Bestaande mutaties mét tegenrekening matchen alleen op
+    (datum, bedrag, tegenrekening-IBAN); mutaties zonder tegenrekening
+    vallen terug op (datum, bedrag). Zo wordt een betaling die toevallig
+    dezelfde datum en hetzelfde bedrag heeft als een andere transactie niet
+    ten onrechte overgeslagen.
     """
-    existing = Counter(
-        (m.get("date"), _amount_key(m.get("amount"))) for m in existing_mutations
-    )
+    with_contra: Counter = Counter()
+    without_contra: Counter = Counter()
+    for mutation in existing_mutations:
+        key = (mutation.get("date"), _amount_key(mutation.get("amount")))
+        contra = _normalize_iban(mutation.get("contra_account_number"))
+        if contra:
+            with_contra[key + (contra,)] += 1
+        else:
+            without_contra[key] += 1
+
     new_payments: list[dict] = []
     skipped = 0
     for payment in payments:
@@ -60,8 +72,12 @@ def filter_new_payments(
             _payment_date(payment).isoformat(),
             _amount_key((payment.get("amount") or {}).get("value")),
         )
-        if existing[key] > 0:
-            existing[key] -= 1
+        contra = _normalize_iban((payment.get("counterparty_alias") or {}).get("iban"))
+        if contra and with_contra[key + (contra,)] > 0:
+            with_contra[key + (contra,)] -= 1
+            skipped += 1
+        elif without_contra[key] > 0:
+            without_contra[key] -= 1
             skipped += 1
         else:
             new_payments.append(payment)
@@ -74,6 +90,7 @@ def sync_company(
     moneybird: MoneybirdClient,
     state: SyncState,
     dry_run: bool = False,
+    rescan_days: int | None = None,
 ) -> int:
     """Synchroniseert alle gekoppelde rekeningen van één bedrijf.
 
@@ -95,7 +112,17 @@ def sync_company(
         account = bunq.find_account_by_iban(mapping.iban)
         last_id = state.last_payment_id(company.name, mapping.iban)
         since = None
-        if last_id is None:
+        if rescan_days:
+            # Negeer het onthouden punt en loop de hele periode opnieuw
+            # langs; de vergelijking met bestaande Moneybird-mutaties houdt
+            # alles tegen wat er al staat.
+            last_id = None
+            since = date.today() - timedelta(days=rescan_days)
+            logger.info(
+                "[%s] %s: rescan, transacties vanaf %s worden opnieuw vergeleken.",
+                company.name, mapping.iban, since.isoformat(),
+            )
+        elif last_id is None:
             since = mapping.sync_from or (
                 date.today() - timedelta(days=config.initial_sync_days)
             )
