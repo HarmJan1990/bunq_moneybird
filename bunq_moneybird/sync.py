@@ -99,6 +99,16 @@ def filter_new_payments(
     return new_payments, skipped
 
 
+def payment_matches(payment: dict, terms: list[str]) -> bool:
+    """True als een zoekterm in de omschrijving voorkomt of gelijk is aan het
+    bunq payment-id."""
+    description = (payment.get("description") or "").lower()
+    return any(
+        term.lower() in description or term == str(payment.get("id"))
+        for term in terms
+    )
+
+
 def sync_company(
     config: Config,
     company: Company,

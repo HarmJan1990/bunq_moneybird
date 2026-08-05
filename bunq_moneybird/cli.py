@@ -17,7 +17,7 @@ from .config import ConfigError, load_config
 from .moneybird_client import MoneybirdApiError, MoneybirdClient
 from .payouts import PayoutFileError, parse_payout_file
 from .state import PayoutState, SyncState
-from .sync import sync_company
+from .sync import _payment_code, payment_matches, payment_to_mutation, sync_company
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -53,6 +53,28 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser(
         "list-moneybird",
         help="Toon Moneybird-administraties en hun financial accounts (voor de mapping)",
+    )
+
+    p_import = subparsers.add_parser(
+        "import",
+        help="Importeer specifieke bunq-transacties gericht naar Moneybird, "
+        "buiten de dedup-heuristiek om (alleen exacte code-matches worden "
+        "nog overgeslagen)",
+    )
+    p_import.add_argument("--company", required=True, help="Bedrijf uit config.yaml")
+    p_import.add_argument("--iban", required=True, help="bunq-rekening (IBAN)")
+    p_import.add_argument(
+        "--search", action="append", required=True, metavar="TEKST",
+        help="Zoektekst in de omschrijving (bijv. een WKB-referentie) of een "
+        "bunq payment-id; herhaal de optie voor meerdere transacties",
+    )
+    p_import.add_argument(
+        "--days", type=int, default=7, metavar="DAGEN",
+        help="Hoeveel dagen terug zoeken (standaard: 7)",
+    )
+    p_import.add_argument(
+        "--dry-run", action="store_true",
+        help="Alleen tonen wat er gevonden en geïmporteerd zou worden",
     )
 
     p_pay = subparsers.add_parser(
@@ -96,6 +118,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_list_moneybird(config)
         if args.command == "pay":
             return _cmd_pay(config, args)
+        if args.command == "import":
+            return _cmd_import(config, args)
     except (ConfigError, PayoutFileError) as exc:
         print(f"Configuratiefout: {exc}", file=sys.stderr)
         return 2
@@ -202,6 +226,81 @@ def _cmd_pay(config, args) -> int:
         "\nOpen de bunq-app om de concept-betaling(en) goed te keuren — "
         "pas daarna wordt er daadwerkelijk uitbetaald."
     )
+    return 0
+
+
+def _cmd_import(config, args) -> int:
+    from datetime import date, timedelta
+
+    company = config.company(args.company)
+    iban = args.iban.replace(" ", "").upper()
+    mapping = next((m for m in company.accounts if m.iban == iban), None)
+    if mapping is None:
+        print(
+            f"Fout: rekening {iban} staat niet onder 'accounts' van "
+            f"'{company.name}' in config.yaml.",
+            file=sys.stderr,
+        )
+        return 2
+
+    bunq = BunqClient(
+        api_url=config.bunq_api_url,
+        api_key=company.bunq_api_key,
+        context_file=company.bunq_context_file,
+        wildcard_ip=company.bunq_wildcard_ip,
+    )
+    account = bunq.find_account_by_iban(iban)
+    since = date.today() - timedelta(days=args.days)
+    payments = bunq.fetch_payments(account["id"], since=since)
+    matches = [p for p in payments if payment_matches(p, args.search)]
+    if not matches:
+        print(
+            f"Geen transacties gevonden in de afgelopen {args.days} dagen die "
+            f"matchen met: {', '.join(args.search)}",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Alleen de exacte code-match beschermt hier nog tegen dubbel importeren;
+    # de heuristiek wordt bewust overgeslagen.
+    moneybird = MoneybirdClient(company.moneybird_token)
+    existing = moneybird.list_financial_mutations(
+        administration_id=company.moneybird_administration_id,
+        financial_account_id=mapping.moneybird_financial_account_id,
+        start=min(p["created"][:10] for p in matches).replace("-", ""),
+        end=max(p["created"][:10] for p in matches).replace("-", ""),
+    )
+    known_codes = {
+        code for m in existing
+        if (code := (m.get("code") or "").strip()).startswith("bunq-")
+    }
+    todo = [p for p in matches if _payment_code(p) not in known_codes]
+    for payment in matches:
+        if payment not in todo:
+            print(f"Al geïmporteerd (code {_payment_code(payment)}): "
+                  f"{payment['created'][:10]}  {payment['amount']['value']}  "
+                  f"{(payment.get('description') or '').strip()[:60]}")
+    if not todo:
+        print("Niets te doen: alle gevonden transacties zijn al geïmporteerd.")
+        return 0
+
+    print(f"Te importeren naar Moneybird ({iban}):")
+    for payment in todo:
+        print(f"  {payment['created'][:10]}  {payment['amount']['value']:>10}  "
+              f"{(payment.get('description') or '').strip()[:60]}")
+
+    if args.dry_run:
+        print("\n[dry-run] Er is niets naar Moneybird gestuurd.")
+        return 0
+
+    reference = f"bunq {iban} import #" + "-".join(str(p["id"]) for p in todo[:2])
+    moneybird.create_financial_statement(
+        administration_id=company.moneybird_administration_id,
+        financial_account_id=mapping.moneybird_financial_account_id,
+        reference=reference,
+        mutations=[payment_to_mutation(p) for p in todo],
+    )
+    print(f"\nAfschrift '{reference}' aangemaakt met {len(todo)} mutatie(s).")
     return 0
 
 

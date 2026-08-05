@@ -14,7 +14,11 @@ from unittest import mock
 from bunq_moneybird.bunq_client import BunqClient
 from bunq_moneybird.config import ConfigError, load_config
 from bunq_moneybird.state import SyncState
-from bunq_moneybird.sync import filter_new_payments, payment_to_mutation
+from bunq_moneybird.sync import (
+    filter_new_payments,
+    payment_matches,
+    payment_to_mutation,
+)
 
 EXAMPLE_CONFIG = """
 defaults:
@@ -131,6 +135,19 @@ def _bunq_payment(pid, day, value, contra=None):
         "description": f"betaling {pid}",
         "counterparty_alias": {"iban": contra} if contra else {},
     }
+
+
+class PaymentMatchTests(unittest.TestCase):
+    def test_matches_on_description_and_id(self):
+        payment = {
+            "id": 123,
+            "description": "Uitbetaling WijKopenBonnen.nl WKB-AXVF-3WAF",
+        }
+        self.assertTrue(payment_matches(payment, ["wkb-axvf-3waf"]))
+        self.assertTrue(payment_matches(payment, ["123"]))
+        self.assertTrue(payment_matches(payment, ["niets", "WKB-AXVF"]))
+        self.assertFalse(payment_matches(payment, ["WKB-ANDERS"]))
+        self.assertFalse(payment_matches({"id": 5, "description": None}, ["x"]))
 
 
 class DedupTests(unittest.TestCase):
