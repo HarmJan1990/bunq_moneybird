@@ -148,18 +148,29 @@ def sync_company(
                 company.name, mapping.iban, since.isoformat(),
             )
         elif last_id is None:
-            since = mapping.sync_from or (
-                date.today() - timedelta(days=config.initial_sync_days)
-            )
-            logger.info(
-                "[%s] %s: eerste sync, transacties vanaf %s worden opgehaald%s.",
-                company.name, mapping.iban, since.isoformat(),
-                " (sync_from uit config)" if mapping.sync_from else "",
-            )
+            stored_since = state.first_sync_since(company.name, mapping.iban)
+            if stored_since:
+                # Eerdere sync vond nog geen transacties; ga verder vanaf
+                # hetzelfde startpunt.
+                since = date.fromisoformat(stored_since)
+            else:
+                since = mapping.sync_from or (
+                    date.today() - timedelta(days=config.initial_sync_days)
+                )
+                logger.info(
+                    "[%s] %s: eerste sync, transacties vanaf %s worden opgehaald%s.",
+                    company.name, mapping.iban, since.isoformat(),
+                    " (sync_from uit config)" if mapping.sync_from else "",
+                )
 
         payments = bunq.fetch_payments(account["id"], after_payment_id=last_id, since=since)
         if not payments:
             logger.info("[%s] %s: geen nieuwe transacties.", company.name, mapping.iban)
+            if last_id is None and since is not None and not dry_run and not rescan_days:
+                state.remember_empty_first_sync(
+                    company.name, mapping.iban, since.isoformat()
+                )
+                state.save()
             continue
 
         # Vergelijk met wat er al in Moneybird staat, zodat overlap met een

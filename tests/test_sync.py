@@ -93,6 +93,21 @@ class StateTests(unittest.TestCase):
             reloaded = SyncState(path)
             self.assertEqual(reloaded.last_payment_id("a", "NL00"), 42)
 
+    def test_empty_first_sync_is_remembered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            state = SyncState(path)
+            self.assertIsNone(state.first_sync_since("a", "NL00"))
+            state.remember_empty_first_sync("a", "NL00", "2026-07-07")
+            state.save()
+            reloaded = SyncState(path)
+            self.assertEqual(reloaded.first_sync_since("a", "NL00"), "2026-07-07")
+            self.assertIsNone(reloaded.last_payment_id("a", "NL00"))
+            # Zodra er wél transacties zijn, wint het payment-id.
+            reloaded.update("a", "NL00", 7)
+            self.assertIsNone(reloaded.first_sync_since("a", "NL00"))
+            self.assertEqual(reloaded.last_payment_id("a", "NL00"), 7)
+
 
 class MutationTests(unittest.TestCase):
     def test_payment_to_mutation(self):

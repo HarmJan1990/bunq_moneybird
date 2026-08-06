@@ -53,9 +53,23 @@ class SyncState:
         entry = self._data["accounts"].get(self._key(company, iban))
         return entry.get("last_payment_id") if entry else None
 
+    def first_sync_since(self, company: str, iban: str) -> str | None:
+        """De startdatum (ISO) van een eerdere sync die nog geen transacties
+        vond; None als er nog nooit gesynct is of er al een payment-id is."""
+        entry = self._data["accounts"].get(self._key(company, iban))
+        return entry.get("since") if entry else None
+
     def update(self, company: str, iban: str, last_payment_id: int) -> None:
         self._data["accounts"][self._key(company, iban)] = {
             "last_payment_id": last_payment_id,
+            "last_synced_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+
+    def remember_empty_first_sync(self, company: str, iban: str, since: str) -> None:
+        """Eerste sync zonder transacties: onthoud de startdatum, zodat de
+        volgende run geen 'eerste sync' meer is."""
+        self._data["accounts"][self._key(company, iban)] = {
+            "since": since,
             "last_synced_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
 
