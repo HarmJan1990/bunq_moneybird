@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 from bunq_moneybird.bunq_client import BunqClient
-from bunq_moneybird.config import ConfigError, load_config
+from bunq_moneybird.config import ConfigError, load_config, load_dotenv
 from bunq_moneybird.state import SyncState
 from bunq_moneybird.sync import (
     filter_new_payments,
@@ -80,6 +80,38 @@ class ConfigTests(unittest.TestCase):
         os.environ.pop("BUNQ_KEY_TEST", None)
         with self.assertRaises(ConfigError):
             _ = config.company("testbedrijf").bunq_api_key
+
+
+class DotenvTests(unittest.TestCase):
+    def test_loads_values_without_overriding_existing(self):
+        content = (
+            "# commentaar\n"
+            "\n"
+            "DOTENV_TEST_A=plain\n"
+            'export DOTENV_TEST_B="met spaties en quotes"\n'
+            "DOTENV_TEST_C='enkel'\n"
+            "DOTENV_TEST_EXISTING=uit-bestand\n"
+            "regel zonder is-teken\n"
+        )
+        for key in ("DOTENV_TEST_A", "DOTENV_TEST_B", "DOTENV_TEST_C"):
+            os.environ.pop(key, None)
+        os.environ["DOTENV_TEST_EXISTING"] = "al-gezet"
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / ".env"
+                path.write_text(content)
+                load_dotenv(path)
+            self.assertEqual(os.environ["DOTENV_TEST_A"], "plain")
+            self.assertEqual(os.environ["DOTENV_TEST_B"], "met spaties en quotes")
+            self.assertEqual(os.environ["DOTENV_TEST_C"], "enkel")
+            self.assertEqual(os.environ["DOTENV_TEST_EXISTING"], "al-gezet")
+        finally:
+            for key in ("DOTENV_TEST_A", "DOTENV_TEST_B", "DOTENV_TEST_C",
+                        "DOTENV_TEST_EXISTING"):
+                os.environ.pop(key, None)
+
+    def test_missing_file_is_fine(self):
+        load_dotenv(Path("/bestaat/echt/niet/.env"))
 
 
 class StateTests(unittest.TestCase):

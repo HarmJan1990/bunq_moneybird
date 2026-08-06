@@ -55,6 +55,17 @@ bunq koppelt een API key standaard aan het IP-adres waarvandaan hij voor het
 eerst gebruikt wordt. Draait de sync op wisselende IP-adressen, zet dan
 `wildcard_ip: true` in de config **vóór het eerste gebruik** van de key.
 
+**Tip: gebruik een `.env`-bestand.** In plaats van `export`-commando's kun
+je alle keys in een `.env` naast `config.yaml` zetten; die wordt bij elk
+commando automatisch geladen (al gezette omgevingsvariabelen winnen):
+
+```bash
+cp .env.example .env
+# vul .env in met je echte keys
+```
+
+`.env` staat in `.gitignore` en komt dus nooit in git terecht.
+
 ### 3. config.yaml
 
 ```bash

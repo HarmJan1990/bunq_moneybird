@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from .bunq_client import BunqApiError, BunqClient
-from .config import ConfigError, load_config
+from .config import ConfigError, load_config, load_dotenv
 from .moneybird_client import MoneybirdApiError, MoneybirdClient
 from .payouts import PayoutFileError, parse_payout_file
 from .state import PayoutState, SyncState
@@ -109,6 +109,9 @@ def main(argv: list[str] | None = None) -> int:
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     try:
+        # .env naast config.yaml wordt automatisch geladen (bestaande
+        # omgevingsvariabelen winnen).
+        load_dotenv(args.config.resolve().parent / ".env")
         config = load_config(args.config)
         if args.command == "sync":
             return _cmd_sync(config, args)

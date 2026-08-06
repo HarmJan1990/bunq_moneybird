@@ -72,6 +72,30 @@ class Config:
         raise ConfigError(f"Onbekend bedrijf '{name}'. Beschikbaar: {known}")
 
 
+def load_dotenv(path: Path) -> None:
+    """Laad KEY=VALUE-regels uit een .env-bestand in de omgeving.
+
+    Al gezette omgevingsvariabelen winnen van het bestand. Ondersteunt
+    commentaarregels (#), een optioneel 'export '-voorvoegsel en waarden
+    tussen enkele of dubbele aanhalingstekens.
+    """
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):]
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if key:
+            os.environ.setdefault(key, value)
+
+
 def load_config(path: Path) -> Config:
     if not path.exists():
         raise ConfigError(
