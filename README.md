@@ -164,6 +164,37 @@ Bij een XML-export wordt de rekening waarvan betaald wordt uit het bestand
 gehaald (`DbtrAcct`); bij CSV geef je hem op met `--iban`. Grote exports
 worden gesplitst in concept-betalingen van maximaal 100 uitbetalingen.
 
+## Mollie synchroniseren (in plaats van MT940-uploads)
+
+Naast bunq kan de sync ook je Mollie-saldo bijhouden: alle
+balanstransacties (betalingen, terugbetalingen, chargebacks,
+uitbetalingen naar je bank, factuurverrekeningen en ingehouden kosten)
+worden als mutaties op een Mollie-financial-account in Moneybird gezet —
+hetzelfde account waar je nu maandelijks de MT940 in uploadt.
+
+1. Maak in het Mollie-dashboard een **organization access token** aan
+   (Developers → Organization access tokens) met de scopes
+   `balances.read` en `payments.read`. Let op: een gewone live_-API key
+   werkt niet voor de Balances API.
+2. Zet het token in `.env` en voeg per bedrijf een `mollie`-blok toe aan
+   `config.yaml` (zie `config.example.yaml`). Zet `sync_from` op de dag
+   ná je laatste MT940-upload.
+3. `bunq-moneybird sync --dry-run` en daarna gewoon `sync` — Mollie doet
+   automatisch mee met dezelfde run, dedup en `--rescan`.
+
+Bijzonderheden:
+
+- Betalingen met transactiekosten worden gesplitst in een
+  **bruto-mutatie** (matcht op de factuur, met naam en IBAN van de
+  betaler en het `tr_`-kenmerk in de omschrijving) en een aparte
+  **kostenmutatie**; samen tellen ze op tot het netto-effect op je
+  Mollie-saldo, dus het saldo blijft exact kloppend.
+- Elke mutatie krijgt een code `mollie-<transactie-id>`, dezelfde exacte
+  dedup als bij bunq. Oude MT940-mutaties zonder code worden in de
+  overgangsperiode heuristisch (datum + bedrag) herkend.
+- `bunq-moneybird list-mollie` toont je balansen (voor `balance_id`, alleen
+  nodig bij meerdere valuta).
+
 ### Automatisch draaien (cron)
 
 ```cron

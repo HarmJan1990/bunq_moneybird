@@ -14,10 +14,17 @@ from pathlib import Path
 
 from .bunq_client import BunqApiError, BunqClient
 from .config import ConfigError, load_config, load_dotenv
+from .mollie_client import MollieApiError, MollieClient
 from .moneybird_client import MoneybirdApiError, MoneybirdClient
 from .payouts import PayoutFileError, parse_payout_file
 from .state import PayoutState, SyncState
-from .sync import _payment_code, payment_matches, payment_to_mutation, sync_company
+from .sync import (
+    _payment_code,
+    payment_matches,
+    payment_to_mutation,
+    sync_company,
+    sync_company_mollie,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -53,6 +60,11 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser(
         "list-moneybird",
         help="Toon Moneybird-administraties en hun financial accounts (voor de mapping)",
+    )
+
+    subparsers.add_parser(
+        "list-mollie",
+        help="Toon Mollie-balansen van bedrijven met een mollie-blok (voor balance_id)",
     )
 
     p_import = subparsers.add_parser(
@@ -119,6 +131,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_list_bunq(config, args)
         if args.command == "list-moneybird":
             return _cmd_list_moneybird(config)
+        if args.command == "list-mollie":
+            return _cmd_list_mollie(config)
         if args.command == "pay":
             return _cmd_pay(config, args)
         if args.command == "import":
@@ -126,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     except (ConfigError, PayoutFileError) as exc:
         print(f"Configuratiefout: {exc}", file=sys.stderr)
         return 2
-    except (BunqApiError, MoneybirdApiError) as exc:
+    except (BunqApiError, MoneybirdApiError, MollieApiError) as exc:
         print(f"Fout: {exc}", file=sys.stderr)
         return 1
     return 0
@@ -320,7 +334,12 @@ def _cmd_sync(config, args) -> int:
                 config, company, moneybird, state,
                 dry_run=args.dry_run, rescan_days=args.rescan,
             )
-        except (BunqApiError, MoneybirdApiError, ConfigError) as exc:
+            if company.mollie is not None:
+                total += sync_company_mollie(
+                    config, company, moneybird, state,
+                    dry_run=args.dry_run, rescan_days=args.rescan,
+                )
+        except (BunqApiError, MoneybirdApiError, MollieApiError, ConfigError) as exc:
             failures += 1
             print(f"[{company.name}] Fout: {exc}", file=sys.stderr)
 
@@ -346,6 +365,30 @@ def _cmd_list_bunq(config, args) -> int:
             f"[{account['status']}]"
         )
     return 0
+
+
+def _cmd_list_mollie(config) -> int:
+    exit_code = 0
+    with_mollie = [c for c in config.companies if c.mollie is not None]
+    if not with_mollie:
+        print("Geen enkel bedrijf heeft een mollie-blok in config.yaml.", file=sys.stderr)
+        return 2
+    for company in with_mollie:
+        print(f"\n=== Bedrijf: {company.name} ===")
+        try:
+            client = MollieClient(company.mollie.token)
+            for balance in client.list_balances():
+                available = (balance.get("availableAmount") or {}).get("value", "?")
+                pending = (balance.get("pendingAmount") or {}).get("value", "?")
+                print(
+                    f"  {balance['id']}  {balance.get('currency', '')}  "
+                    f"beschikbaar: {available}  onderweg: {pending}  "
+                    f"[{balance.get('status', '')}]"
+                )
+        except (ConfigError, MollieApiError) as exc:
+            print(f"  Overgeslagen: {exc}", file=sys.stderr)
+            exit_code = 1
+    return exit_code
 
 
 def _cmd_list_moneybird(config) -> int:

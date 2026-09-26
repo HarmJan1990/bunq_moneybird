@@ -27,6 +27,27 @@ class AccountMapping:
 
 
 @dataclass
+class MollieSettings:
+    company_name: str
+    token_env: str
+    moneybird_financial_account_id: str
+    balance_id: str | None = None
+    # Eerste sync begint op deze datum (bijv. de dag na je laatste
+    # MT940-upload) in plaats van initial_sync_days terug.
+    sync_from: date | None = None
+
+    @property
+    def token(self) -> str:
+        token = os.environ.get(self.token_env, "").strip()
+        if not token:
+            raise ConfigError(
+                f"Omgevingsvariabele {self.token_env} (Mollie organization access "
+                f"token voor '{self.company_name}') is niet gezet."
+            )
+        return token
+
+
+@dataclass
 class Company:
     name: str
     bunq_api_key_env: str
@@ -35,6 +56,7 @@ class Company:
     moneybird_token_env: str
     accounts: list[AccountMapping]
     bunq_wildcard_ip: bool = False
+    mollie: MollieSettings | None = None
 
     @property
     def bunq_api_key(self) -> str:
@@ -96,6 +118,17 @@ def load_dotenv(path: Path) -> None:
             os.environ.setdefault(key, value)
 
 
+def _parse_date(value, context: str) -> date | None:
+    if value is None or isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError:
+        raise ConfigError(
+            f"{context}: sync_from moet een datum zijn (JJJJ-MM-DD), niet '{value}'."
+        )
+
+
 def load_config(path: Path) -> Config:
     if not path.exists():
         raise ConfigError(
@@ -144,19 +177,33 @@ def load_config(path: Path) -> Config:
                 )
             sync_from = acc.get("sync_from")
             if sync_from is not None and not isinstance(sync_from, date):
-                try:
-                    sync_from = date.fromisoformat(str(sync_from))
-                except ValueError:
-                    raise ConfigError(
-                        f"Bedrijf '{name}', rekening {iban}: sync_from moet een "
-                        f"datum zijn (JJJJ-MM-DD), niet '{sync_from}'."
-                    )
+                sync_from = _parse_date(sync_from, f"Bedrijf '{name}', rekening {iban}")
             accounts.append(
                 AccountMapping(
                     iban=iban,
                     moneybird_financial_account_id=str(fa_id),
                     sync_from=sync_from,
                 )
+            )
+
+        mollie_raw = entry.get("mollie") or {}
+        mollie_settings = None
+        if mollie_raw:
+            mollie_token_env = mollie_raw.get("token_env")
+            mollie_fa_id = mollie_raw.get("moneybird_financial_account_id")
+            if not mollie_token_env or not mollie_fa_id:
+                raise ConfigError(
+                    f"Bedrijf '{name}': het mollie-blok heeft 'token_env' en "
+                    "'moneybird_financial_account_id' nodig."
+                )
+            mollie_settings = MollieSettings(
+                company_name=name,
+                token_env=mollie_token_env,
+                moneybird_financial_account_id=str(mollie_fa_id),
+                balance_id=mollie_raw.get("balance_id"),
+                sync_from=_parse_date(
+                    mollie_raw.get("sync_from"), f"Bedrijf '{name}', mollie"
+                ),
             )
 
         companies.append(
@@ -168,6 +215,7 @@ def load_config(path: Path) -> Config:
                 moneybird_token_env=token_env,
                 accounts=accounts,
                 bunq_wildcard_ip=bool(bunq.get("wildcard_ip", False)),
+                mollie=mollie_settings,
             )
         )
 

@@ -30,6 +30,19 @@ companies:
         # transactie die een eerdere koppeling al importeerde, anders komen
         # die dubbel in Moneybird.
         # sync_from: "2026-07-15"
+    # Optioneel: Mollie-balanstransacties (betalingen, refunds, chargebacks,
+    # uitbetalingen, factuurverrekeningen) naar een Mollie-financial-account
+    # in Moneybird — vervangt de maandelijkse MT940-upload.
+    # mollie:
+    #   # Organization access token (access_...), aan te maken in het
+    #   # Mollie-dashboard onder Developers -> Organization access tokens,
+    #   # met de scopes balances.read en payments.read.
+    #   token_env: MOLLIE_TOKEN_BEDRIJF_1
+    #   # Het Mollie-account in Moneybird waar je nu de MT940 in uploadt.
+    #   moneybird_financial_account_id: "..."
+    #   # balance_id: bal_...   # alleen nodig bij meerdere balansen
+    #   # Dag NA je laatste MT940-upload, anders dubbel:
+    #   sync_from: "2026-10-01"
 
   # - name: bedrijf-2
   #   bunq:

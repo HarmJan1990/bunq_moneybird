@@ -73,6 +73,23 @@ class SyncState:
             "last_synced_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
 
+    def mollie_last(self, company: str, balance_id: str) -> dict | None:
+        """Laatst verwerkte Mollie-balanstransactie: {'last_transaction_id',
+        'last_created_at'} of None."""
+        entry = self._data["accounts"].get(self._key(company, f"mollie:{balance_id}"))
+        if entry and entry.get("last_transaction_id"):
+            return entry
+        return None
+
+    def update_mollie(
+        self, company: str, balance_id: str, transaction_id: str, created_at: str
+    ) -> None:
+        self._data["accounts"][self._key(company, f"mollie:{balance_id}")] = {
+            "last_transaction_id": transaction_id,
+            "last_created_at": created_at,
+            "last_synced_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(self._data, indent=2))
