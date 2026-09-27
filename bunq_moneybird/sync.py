@@ -440,7 +440,13 @@ def sync_company_mollie(
             logger.info("  [dry-run] Zou afschrift '%s' aanmaken met %d mutatie(s):",
                         reference, len(chunk))
             for m in chunk:
-                logger.info("    %s  %10s  %s", m["date"], m["amount"], m["message"][:60])
+                contra = " ".join(
+                    part for part in (m.get("contra_account_name"),
+                                      m.get("contra_account_number"))
+                    if part and part != "Mollie"
+                )
+                logger.info("    %s  %10s  %-60s  %s",
+                            m["date"], m["amount"], m["message"][:60], contra)
             continue
 
         moneybird.create_financial_statement(
