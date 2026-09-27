@@ -272,6 +272,9 @@ _MOLLIE_TYPE_LABELS = {
     "balance-correction": "saldocorrectie",
     "invoice-compensation": "factuurverrekening",
     "fee-prepayment": "ingehouden kosten",
+    # In het dashboard: "Balans / Aanpassing", bijv. voor het minimum
+    # maandelijkse factuurbedrag.
+    "movement": "saldo-aanpassing",
     "application-fee": "platformkosten",
     "rolling-reserve-hold": "aangehouden reserve",
     "rolling-reserve-release": "vrijgegeven reserve",
