@@ -423,8 +423,8 @@ def sync_company_mollie(
         return 0
 
     logger.info(
-        "[%s] mollie %s: %d nieuwe transactie(s) (%s t/m %s).",
-        company.name, balance_id, len(new_mutations),
+        "[%s] mollie %s: %d nieuwe mutatie(s) uit %d transactie(s) (%s t/m %s).",
+        company.name, balance_id, len(new_mutations), len(transactions),
         new_mutations[0]["date"], new_mutations[-1]["date"],
     )
 
