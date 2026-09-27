@@ -50,7 +50,7 @@ class MollieSettings:
 @dataclass
 class Company:
     name: str
-    bunq_api_key_env: str
+    bunq_api_key_env: str | None
     bunq_context_file: Path
     moneybird_administration_id: str
     moneybird_token_env: str
@@ -60,6 +60,11 @@ class Company:
 
     @property
     def bunq_api_key(self) -> str:
+        if not self.bunq_api_key_env:
+            raise ConfigError(
+                f"Bedrijf '{self.name}' heeft geen bunq-blok (bunq.api_key_env) "
+                "in config.yaml."
+            )
         key = os.environ.get(self.bunq_api_key_env, "").strip()
         if not key:
             raise ConfigError(
@@ -149,8 +154,6 @@ def load_config(path: Path) -> Config:
             raise ConfigError("Elk bedrijf in 'companies' heeft een 'name' nodig.")
         bunq = entry.get("bunq") or {}
         api_key_env = bunq.get("api_key_env")
-        if not api_key_env:
-            raise ConfigError(f"Bedrijf '{name}': bunq.api_key_env ontbreekt.")
         context_file = bunq.get("context_file") or f".bunq/{name}-context.json"
 
         company_moneybird = entry.get("moneybird") or {}
@@ -184,6 +187,12 @@ def load_config(path: Path) -> Config:
                     moneybird_financial_account_id=str(fa_id),
                     sync_from=sync_from,
                 )
+            )
+
+        if accounts and not api_key_env:
+            raise ConfigError(
+                f"Bedrijf '{name}': bunq.api_key_env is verplicht zodra er "
+                "bunq-rekeningen onder 'accounts' staan."
             )
 
         mollie_raw = entry.get("mollie") or {}

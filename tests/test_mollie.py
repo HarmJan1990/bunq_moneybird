@@ -201,6 +201,48 @@ companies:
         self.assertIsNone(mollie.balance_id)
         self.assertEqual(mollie.sync_from.isoformat(), "2026-09-01")
 
+    def test_mollie_only_company_needs_no_bunq_block(self):
+        raw = """
+companies:
+  - name: webshop
+    moneybird:
+      token_env: MB_TOKEN_WEBSHOP
+      administration_id: "222"
+    mollie:
+      token_env: MOLLIE_TOKEN_WEBSHOP
+      moneybird_financial_account_id: 777
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.yaml"
+            path.write_text(raw)
+            config = load_config(path)
+        company = config.company("webshop")
+        self.assertEqual(company.accounts, [])
+        self.assertIsNotNone(company.mollie)
+        from bunq_moneybird.config import ConfigError
+
+        with self.assertRaises(ConfigError):
+            _ = company.bunq_api_key
+
+    def test_bunq_accounts_still_require_api_key_env(self):
+        raw = """
+companies:
+  - name: kapot
+    moneybird:
+      token_env: MB_TOKEN
+      administration_id: "222"
+    accounts:
+      - iban: NL91ABNA0417164300
+        moneybird_financial_account_id: 1
+"""
+        from bunq_moneybird.config import ConfigError
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.yaml"
+            path.write_text(raw)
+            with self.assertRaises(ConfigError):
+                load_config(path)
+
 
 class MollieStateTests(unittest.TestCase):
     def test_roundtrip(self):
